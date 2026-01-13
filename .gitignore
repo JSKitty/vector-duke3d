@@ -1,0 +1,10 @@
+*.xdc
+.DS_Store
+temp/
+game/
+v8-backup/
+emulators/
+*.zip
+*.tgz
+*.map
+*.symbols
