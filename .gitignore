@@ -3,7 +3,6 @@
 temp/
 game/
 v8-backup/
-emulators/
 *.zip
 *.tgz
 *.map
