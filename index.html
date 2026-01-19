@@ -93,7 +93,7 @@
       color: #59fcb3;
       font-weight: 600;
     }
-    /* Hide ALL js-dos UI overlays */
+    /* Hide js-dos UI overlays */
     .emulator-button,
     .emulator-button-control,
     .emulator-keyboard,
@@ -104,16 +104,6 @@
     #jsdos .absolute.left-0,
     #jsdos [class*="keyboard"] {
       display: none !important;
-    }
-    /* Canvas: absolute center, scale to fit viewport */
-    #jsdos canvas {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      object-fit: contain !important;
-      object-position: center center !important;
     }
   </style>
 </head>
@@ -130,53 +120,42 @@
   </div>
   <div id="jsdos"></div>
 
-  <!-- js-dos v7 -->
   <script src="js-dos.js"></script>
   <script>
     var loadingElement = document.getElementById('loading');
     var statusElement = document.querySelector('#status span');
-    var ci = null;
 
     async function initDuke3D() {
       try {
         statusElement.textContent = 'Initializing DOSBox...';
 
-        // js-dos v7 API: Dos(element).run(bundleUrl) returns CommandInterface
-        var dos = Dos(document.getElementById("jsdos"), {
-          wdosboxUrl: "./wdosbox.js",
-          autolock: true,
+        // js-dos v8 API - kiosk mode, no UI
+        Dos(document.getElementById("jsdos"), {
+          pathPrefix: "./emulators/",
+          url: "duke3d.jsdos",
+          autoStart: true,
+          kiosk: true,
+          noCloud: true,
+          noNetworking: true,
+          onEvent: function(event, ci) {
+            if (event === 'ci-ready' && ci) {
+              statusElement.textContent = 'Starting game...';
+              // Wait for Duke's native resolution (320x200)
+              var gameStarted = false;
+              ci.events().onFrameSize(function(width, height) {
+                if (!gameStarted && width === 320 && height === 200) {
+                  gameStarted = true;
+                  setTimeout(function() {
+                    loadingElement.classList.add('hidden');
+                    setupGamepad();
+                  }, 500);
+                }
+              });
+            }
+          }
         });
 
         statusElement.textContent = 'Loading Duke Nukem 3D...';
-        ci = await dos.run("duke3d.jsdos");
-
-        statusElement.textContent = 'Starting game...';
-
-        // Detect when Duke3D starts by watching for 320x200 resolution
-        var gameStarted = false;
-        ci.events().onFrameSize(function(width, height) {
-          // Duke3D runs at 320x200, DOSBox text mode is different (e.g., 640x400)
-          if (!gameStarted && width === 320 && height === 200) {
-            gameStarted = true;
-            // Small delay to let first frame render
-            setTimeout(function() {
-              loadingElement.classList.add('hidden');
-              setupGamepad();
-            }, 500);
-          }
-        });
-
-        // Manual pointer lock for Firefox
-        setTimeout(function() {
-          var canvas = document.querySelector('#jsdos canvas');
-          if (canvas) {
-            canvas.addEventListener('click', function() {
-              if (!document.pointerLockElement) {
-                canvas.requestPointerLock();
-              }
-            });
-          }
-        }, 1000);
 
       } catch (err) {
         console.error('Failed to load Duke Nukem 3D:', err);
@@ -217,7 +196,7 @@
       return gp.buttons[index] && gp.buttons[index].pressed;
     }
 
-    // Key codes for js-dos - uses JavaScript keyCodes, not DOS scancodes!
+    // Key codes for js-dos
     var DOS_KEY = {
       ESC: 27,
       '1': 49, '2': 50, '3': 51, '4': 52, '5': 53, '6': 54, '7': 55, '8': 56, '9': 57, '0': 48,
@@ -228,13 +207,11 @@
       CTRL: 17, LSHIFT: 16, RSHIFT: 16, ALT: 18,
       UP: 38, DOWN: 40, LEFT: 37, RIGHT: 39,
       LBRACKET: 219, RBRACKET: 221,
-      COMMA: 188, PERIOD: 190,
     };
-
 
     var gameCanvas = null;
 
-    function sendKey(key, keyCode, pressed) {
+    function sendKey(keyCode, pressed) {
       if (!gameCanvas) {
         gameCanvas = document.querySelector('#jsdos canvas');
       }
@@ -262,37 +239,36 @@
       var deadzone = 0.3;
       var axes = gp.axes;
 
-      // DOOM-style controls using DOS key codes
+      // DOOM-style controls
       var mapping = [
-        // D-pad: Arrow keys (for menus AND turning in-game)
+        // D-pad: Arrow keys (menus + turning)
         { input: function() { return isButtonPressed(gp, 12); }, keyCode: DOS_KEY.UP },
         { input: function() { return isButtonPressed(gp, 13); }, keyCode: DOS_KEY.DOWN },
         { input: function() { return isButtonPressed(gp, 14); }, keyCode: DOS_KEY.LEFT },
         { input: function() { return isButtonPressed(gp, 15); }, keyCode: DOS_KEY.RIGHT },
-        // Left stick: W/S for forward/back
+        // Left stick: W/S forward/back, A/D strafe
         { input: function() { return axes[1] < -deadzone; }, keyCode: DOS_KEY.W },
         { input: function() { return axes[1] > deadzone; }, keyCode: DOS_KEY.S },
-        // Left stick horizontal: strafe (A/D)
         { input: function() { return axes[0] < -deadzone; }, keyCode: DOS_KEY.A },
         { input: function() { return axes[0] > deadzone; }, keyCode: DOS_KEY.D },
-        // Right stick horizontal for turning
+        // Right stick: turn
         { input: function() { return axes[2] < -deadzone; }, keyCode: DOS_KEY.LEFT },
         { input: function() { return axes[2] > deadzone; }, keyCode: DOS_KEY.RIGHT },
-        // RT/RB for fire (Q)
+        // RT/RB: fire
         { input: function() { return isButtonPressed(gp, 7) || isButtonPressed(gp, 5); }, keyCode: DOS_KEY.Q },
-        // A button for use (E) + Enter for menus
+        // A: use/enter
         { input: function() { return isButtonPressed(gp, 0); }, keyCode: DOS_KEY.ENTER },
-        // X button for jump (Space)
+        // X: jump
         { input: function() { return isButtonPressed(gp, 2); }, keyCode: DOS_KEY.SPACE },
-        // B button for crouch (C)
+        // B: crouch
         { input: function() { return isButtonPressed(gp, 1); }, keyCode: DOS_KEY.C },
-        // Y button for map (Tab)
+        // Y: map
         { input: function() { return isButtonPressed(gp, 3); }, keyCode: DOS_KEY.TAB },
-        // Start for Escape (menu)
+        // Start: menu
         { input: function() { return isButtonPressed(gp, 9); }, keyCode: DOS_KEY.ESC },
-        // Select for Enter
+        // Select: enter
         { input: function() { return isButtonPressed(gp, 8); }, keyCode: DOS_KEY.ENTER },
-        // LB/LT for weapon prev/next
+        // LB/LT: weapon prev/next
         { input: function() { return isButtonPressed(gp, 4); }, keyCode: DOS_KEY.LBRACKET },
         { input: function() { return isButtonPressed(gp, 6); }, keyCode: DOS_KEY.RBRACKET },
       ];
@@ -300,11 +276,9 @@
       mapping.forEach(function(m, i) {
         var pressed = m.input();
         var wasPressed = gamepadState[i];
-
         if (pressed !== wasPressed) {
-          sendKey(null, m.keyCode, pressed);
+          sendKey(m.keyCode, pressed);
         }
-
         gamepadState[i] = pressed;
       });
 
